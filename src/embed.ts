@@ -1,19 +1,16 @@
-import { FastPath, Doc, ParserOptions } from "prettier";
-import { Concat, PrintFn, TextToDoc } from "./types";
-
+import { AstPath, Doc, ParserOptions, doc } from "prettier";
+import { PluginOptions, PrintFn, TextToDoc } from "./types";
 import parser from "@babel/parser";
-import prettier from "prettier";
 import parseTemplate from "./parseTemplate";
 
-const { concat, fill, line, group, indent, dedent, softline, hardline } =
-  prettier.doc.builders;
-const { mapDoc, stripTrailingHardline } = prettier.doc.utils;
+const { fill, line, group, indent, dedent, softline, hardline } = doc.builders;
+const { mapDoc, stripTrailingHardline } = doc.utils;
 
 function embed(
-  path: FastPath,
+  path: AstPath,
   print: PrintFn,
   textToDoc: TextToDoc,
-  options: ParserOptions
+  options: PluginOptions
 ): Doc | null {
   const node = path.getValue();
   if (!node || !node.type) return null;
@@ -28,34 +25,22 @@ function embed(
   }
 }
 
-function printTags(textToDoc: any, print: any, options: ParserOptions<any>) {
-  return (path: {
-    getValue: () => any;
-    each: (
-      arg0: (childPath: {
-        getValue: () => any;
-        call: (arg0: PrintFn) => any;
-      }) => void,
-      arg1: string
-    ) => void;
-  }) => {
+function printTags(textToDoc: any, print: any, options: PluginOptions) {
+  return (path: AstPath) => {
     const node = path.getValue();
     const hasParent = !!node.parent;
     const hasChildren = node.children.length > 0;
-    const children: prettier.doc.builders.Doc[] = [];
-    path.each(
-      (childPath: { getValue: () => any; call: (arg0: PrintFn) => any }) => {
-        const child = childPath.getValue();
-        if (
-          child.type !== "text" ||
-          (child.type === "text" && child.data.trim() !== "")
-        ) {
-          children.push(softline);
-        }
-        children.push(childPath.call(print));
-      },
-      "children"
-    );
+    const children: Doc[] = [];
+    path.each((childPath) => {
+      const child = childPath.getValue();
+      if (
+        child.type !== "text" ||
+        (child.type === "text" && child.data.trim() !== "")
+      ) {
+        children.push(softline);
+      }
+      children.push(childPath.call(print));
+    }, "children");
     const attributeKeys = Object.keys(node.attribs);
     const attributeTexts = attributeKeys.map((key) => {
       const value = node.attribs[key];
@@ -76,35 +61,31 @@ function printTags(textToDoc: any, print: any, options: ParserOptions<any>) {
           '"'
         );
       }
-      return concat(parts);
+      return parts;
     });
     const attributes =
       attributeKeys.length > 0
-        ? group(
-            concat([
-              indent(concat(attributeTexts)),
-              options.axmlBracketSameLine ? "" : hasChildren ? softline : ""
-            ])
-          )
+        ? group([
+            indent(attributeTexts),
+            options.axmlBracketSameLine ? "" : hasChildren ? softline : ""
+          ])
         : "";
-    const openingTagEnd = hasChildren ? ">" : concat([line, "/>"]);
-    return group(
-      concat([
-        "<",
-        node.name,
-        attributes,
-        openingTagEnd,
-        indent(concat(children)),
-        hasChildren ? concat([softline, "</", node.name, ">"]) : "",
-        hasParent ? "" : softline
-      ])
-    );
+    const openingTagEnd = hasChildren ? ">" : [line, "/>"];
+    return group([
+      "<",
+      node.name,
+      attributes,
+      openingTagEnd,
+      indent(children),
+      hasChildren ? [softline, "</", node.name, ">"] : "",
+      hasParent ? "" : softline
+    ]);
   };
 }
 function parseAndPrintJSExpression(
   textToDoc: TextToDoc,
   _print: PrintFn,
-  options: ParserOptions<any>
+  options: PluginOptions
 ) {
   return (text: any, forceNakedJSObject = false, isAttribute = false) => {
     let spans = [["text", text, 0, text.length]];
@@ -113,78 +94,72 @@ function parseAndPrintJSExpression(
     } catch {}
     const len = spans.length;
     if (!len || (len === 1 && !spans[0][1].trim())) {
-      return concat([""]);
+      return [""];
     }
     return group(
-      concat(
-        spans.map((span, index) => {
-          const [type, data] = span.slice(0, 2);
-          let str = data;
-          // string literal
-          if (type === "text") {
-            // Keep whitespaces the same in attributes' TEXT
-            if (isAttribute) return str;
-            const parts = [];
-            // Remove Element's first text child's leading whitespaces.
-            // `<view>  abcd</view>` -> `<view>abcd</view>`
-            if (index === 0) {
-              str = str.trimStart();
-            }
-            // Remove Element's last text child's trailing whitespaces.
-            // `<view>abcd   </view>` -> `<view>abcd</view>`
-            // `<view>abcd\n   </view>` -> `<view>abcd</view>`
-            // `<view>   \n \n  </view>` -> `<view></view>`
-            if (index === len - 1) {
-              str = str.trimEnd();
-            }
-            // Make sure to squash linebreaks and whitespaces
-            str = str.replace(/[\s]+/g, " ");
-            parts.push(
-              concat(
-                str.split(/(\n)/g).map((value: string) => {
-                  if (value === "\n") return line;
-                  return fill(
-                    value
-                      .split(/( )/g)
-                      .map((segment: any, index: number) =>
-                        index % 2 === 0 ? segment : line
-                      )
-                  );
-                })
-              )
-            );
-            return group(concat(parts));
+      spans.map((span, index) => {
+        const [type, data] = span.slice(0, 2);
+        let str = data;
+        // string literal
+        if (type === "text") {
+          // Keep whitespaces the same in attributes' TEXT
+          if (isAttribute) return str;
+          const parts = [];
+          // Remove Element's first text child's leading whitespaces.
+          // `<view>  abcd</view>` -> `<view>abcd</view>`
+          if (index === 0) {
+            str = str.trimStart();
           }
-          // JS expression(or "naked" object expression)
-          else if (type === "expression") {
-            // Only do isNakedJSObject check for attributes, as a performance improvement
-            let forceNaked = forceNakedJSObject;
-            if (isAttribute) {
-              forceNaked = forceNaked || isNakedJSObject(str);
-            }
-            const spacing = forceNaked
-              ? ""
-              : options.axmlBracketSpacing
-              ? line
-              : softline;
-            return concat([
-              "{{",
-              indent(
-                concat([
-                  spacing,
-                  forceNaked
-                    ? printNakedJSObject(str, textToDoc, options)
-                    : printJSExpression(str, textToDoc, options)
-                ])
-              ),
+          // Remove Element's last text child's trailing whitespaces.
+          // `<view>abcd   </view>` -> `<view>abcd</view>`
+          // `<view>abcd\n   </view>` -> `<view>abcd</view>`
+          // `<view>   \n \n  </view>` -> `<view></view>`
+          if (index === len - 1) {
+            str = str.trimEnd();
+          }
+          // Make sure to squash linebreaks and whitespaces
+          str = str.replace(/[\s]+/g, " ");
+          parts.push(
+            str.split(/(\n)/g).map((value: string) => {
+              if (value === "\n") return line;
+              return fill(
+                value
+                  .split(/( )/g)
+                  .map((segment: any, index: number) =>
+                    index % 2 === 0 ? segment : line
+                  )
+              );
+            })
+          );
+          return group(parts);
+        }
+        // JS expression(or "naked" object expression)
+        else if (type === "expression") {
+          // Only do isNakedJSObject check for attributes, as a performance improvement
+          let forceNaked = forceNakedJSObject;
+          if (isAttribute) {
+            forceNaked = forceNaked || isNakedJSObject(str);
+          }
+          const spacing = forceNaked
+            ? ""
+            : options.axmlBracketSpacing
+            ? line
+            : softline;
+          return [
+            "{{",
+            indent([
               spacing,
-              "}}"
-            ]);
-          } else {
-            return text;
-          }
-        })
-      )
+              forceNaked
+                ? printNakedJSObject(str, textToDoc, options)
+                : printJSExpression(str, textToDoc, options)
+            ]),
+            spacing,
+            "}}"
+          ];
+        } else {
+          return text;
+        }
+      })
     );
   };
 }
@@ -204,13 +179,11 @@ function printJSExpression(text: any, textToDoc: TextToDoc, options: any) {
     const leadingCommentsEnd =
       expr.leadingComments[expr.leadingComments.length - 1].end;
     // make coments a little prettier too
-    comments = concat(
-      text
-        .slice(0, leadingCommentsEnd)
-        .trim()
-        .split("\n")
-        .map((s: string) => concat([s.trim(), hardline]))
-    );
+    comments = text
+      .slice(0, leadingCommentsEnd)
+      .trim()
+      .split("\n")
+      .map((s: string) => [s.trim(), hardline]);
     // remove leading comments, make it easier to remove prefix semi
     text = text.slice(leadingCommentsEnd + 1).trimStart();
   }
@@ -227,7 +200,7 @@ function printJSExpression(text: any, textToDoc: TextToDoc, options: any) {
   doc = normalizeDoc(stripTrailingHardline(doc));
   // concat coments and the rest
   if (comments) {
-    doc = concat([comments, doc]);
+    doc = [comments, doc];
   }
   return doc;
 }
