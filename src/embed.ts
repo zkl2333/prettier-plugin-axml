@@ -3,7 +3,7 @@ import { AxmlOptions, PrintFn, TemplateTokens, TextToDoc } from "./types";
 import * as parser from "@babel/parser";
 import parseTemplate from "./parseTemplate";
 
-const { fill, line, group, indent, softline, hardline } = doc.builders;
+const { fill, line, group, indent, softline, hardline, join } = doc.builders;
 
 const embed: Printer<any>["embed"] = (
   path,
@@ -115,51 +115,50 @@ function parseAndPrintJSExpression(
       tokens.map((token, index) => {
         const [type, data] = token;
         let str = data;
-
         // 普通字符串
         if (type === "text") {
           // 保持属性文本中的空格相同
           if (isAttribute) return str.replace(/(\s)+/g, " ");
 
-          // 删除 Element 的第一个文本子项的前导空格。
-          // `<view>  abcd</view>` -> `<view>abcd</view>`
-          if (index === 0) {
-            str = str.replace(/^( )+/g, "");
-            // str = str.trimStart();
-          }
-          // 删除 Element 的最后一个文本子项的尾随空格。
-          // `<view>abcd   </view>` -> `<view>abcd</view>`
-          // `<view>abcd\n   </view>` -> `<view>abcd</view>`
-          // `<view>   \n \n  </view>` -> `<view></view>`
-          if (index === tokensLen - 1) {
-            str = str.replace(/( )+$/g, "");
-            // str = str.trimEnd();
-          }
-
           // 多个换行符保留一个
           if (
-            str.trim() === "" &&
-            str.split("").filter((char) => char === "\n").length > 2
+            str.trim().length === 0 &&
+            str.split("").filter((char) => char === "\n").length > 1
           ) {
             return hardline;
           }
 
-          // 组装
-          const parts = [
-            str
-              .split(/(\n)/g)
-              .filter((segment) => segment !== "")
-              .map((segment: string) => {
-                if (segment === "\n") return line;
-                return fill(
-                  segment.split(/( )/g).map((segment: string) => {
-                    return /\s/.test(segment) ? line : segment;
-                  })
-                );
-              })
-          ];
+          // 替换分隔符
+          str = str.replace(/(\s)+/g, " ");
 
-          return group(parts);
+          // 跳过空白
+          if (str === " ") {
+            return "";
+          }
+
+          // 删除 Element 的第一个文本子项的前导空格。
+          if (index === 0) {
+            str = str.trimStart();
+          }
+          // 删除 Element 的最后一个文本子项的尾随空格。
+          if (index === tokensLen - 1) {
+            str = str.trimEnd();
+          }
+
+          let segmentArr = str.split(" ");
+          let fillDoc: Doc[] = [];
+          // 奇数索引的元素必须是换行符
+          segmentArr.forEach((segment: string, index: number) => {
+            if (index === 0) {
+              fillDoc.push(segment);
+            } else {
+              fillDoc.push(line);
+              fillDoc.push(segment);
+            }
+          });
+
+          // 组装
+          return fill(fillDoc);
         }
         // JS 表达式（或“裸”对象表达式）
         else if (type === "expression") {
@@ -171,7 +170,7 @@ function parseAndPrintJSExpression(
           const spacing = options.axmlBracketSpacing ? line : softline;
 
           // 组装 Doc
-          return [
+          return group([
             "{{",
             indent([
               spacing,
@@ -181,7 +180,7 @@ function parseAndPrintJSExpression(
             ]),
             spacing,
             "}}"
-          ];
+          ]);
         } else {
           return text;
         }
@@ -227,9 +226,6 @@ function printJSExpression(text: any, textToDoc: TextToDoc, options: any): Doc {
     bracketSpacing: options.axmlBracketSpacing
   });
 
-  // remove redundant Doc
-  // doc = cleanDoc(stripTrailingHardline(doc));
-
   if (comments) {
     doc = [comments, doc];
   }
@@ -239,9 +235,7 @@ function printJSExpression(text: any, textToDoc: TextToDoc, options: any): Doc {
 // 裸 js 对象到 Doc
 function printNakedJSObject(text: string, textToDoc: any, options: any) {
   if (!text) return text;
-
   const doc = printJSExpression(`{${text}}`, textToDoc, options);
-
   return doc;
 }
 

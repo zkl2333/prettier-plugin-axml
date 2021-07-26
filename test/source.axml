@@ -1,29 +1,23 @@
 <view id="defense-blackWhiteList">
-
     <view class="pa-normal fx--between-center bg-white mb-normal" a:if="{{act=='evaluate'}}">
         <view class="fd--c">
             <text class="fs-normal
-            
-             c-big"> 自动添加评价 黑名单 </text>
-            <text class="fs-little c-big mt-little"> 买家给店 铺中差评 将自动 添加到评价家给店
-             铺中差评 将自动 添加到评价家给店 铺中差评 将自动 添加到评价家给店 铺中差评 将自动 添加到评价家给店 
-             铺中差评 将自动 添加到评价家给店 铺中差评 将自动
-             添加到评价家给店 铺中差评 将自动 添加到评价家给店 铺中差评 
-             将自动 添加到评价家给店 铺中差评 将自动 添加到评价家给店 铺中差评
-             将自动 添加到评价黑名单 {{asdasd}} </text>
-        </view>
-
-
-        <switch checked="{{blackListSet}}" onChange="switchChange"/>
-
+            c-big"> 自动添加评价 黑名单 </text>
+            <text class="fs-little c-big mt-little"> 1买家给店 铺中差评 将自动 添加到评价家给店
+             2铺中差评 将自动 添加到评价家给店 铺中差评 将自动 添加到评价家给店 铺中差评 将自动 添加到评价家给店 
+             3铺中差评 将自动 添加到评价家给店 铺中差评 将自动
+             4添加到评价家给店 铺中差评 将自动 添加到评价家给店 铺中差评 
+             5将自动 添加到评价家给店 铺中差评 将自动 添加到评价家给店 铺中差评
+             6将自动 添加到评价黑名单 
+             {{asdasd}} 
+             </text>
+        </view><switch checked="{{blackListSet}}" onChange="switchChange"/>
     </view>
+    <p-v-add-input ref="saveRef"  sysasd="{{ system }}"  systafdgem="{{ system }}"  dga="{{ system }}" act="{{act}}"></p-v-add-input>
 
-
-    <p-v-add-input ref="saveRef" system="{{ system }}" act="{{act}}"></p-v-add-input>
     <view class="mt-normal {{showFooter?'mb-btn':''}}">
         <p-v-list-item ref="saveRef" system="{{ system }}" act="{{act}}"></p-v-list-item>
     </view>
-
 
     <p-v-footer-btn ref="saveRef" system="{{ system }}" a:if="{{showFooter}}" all="{{choseAll}}"></p-v-footer-btn>
 </view>
