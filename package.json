@@ -2,9 +2,10 @@
   "name": "prettier-plugin-axml",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "dist/plugin.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "tsc -p tsconfig.json",
+    "print": "prettier --plugin=. ./test/todos.axml"
   },
   "repository": {
     "type": "git",
@@ -15,5 +16,22 @@
   "bugs": {
     "url": "https://github.com/zkl2333/prettier-plugin-axml/issues"
   },
-  "homepage": "https://github.com/zkl2333/prettier-plugin-axml#readme"
+  "homepage": "https://github.com/zkl2333/prettier-plugin-axml#readme",
+  "dependencies": {
+    "@babel/parser": "^7.14.8",
+    "@babel/types": "^7.14.8",
+    "domhandler": "^4.2.0",
+    "htmlparser2": "^6.1.0",
+    "prettier": "^2.3.2"
+  },
+  "devDependencies": {
+    "@types/prettier": "^2.3.2",
+    "typescript": "^4.3.5"
+  },
+  "prettier": {
+    "plugins": [
+      "."
+    ],
+    "trailingComma": "none"
+  }
 }

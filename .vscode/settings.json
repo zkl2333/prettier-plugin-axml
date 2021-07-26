@@ -1,0 +1,6 @@
+{
+  "prettier.resolveGlobalModules": true,
+  "[axml]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  }
+}
