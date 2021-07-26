@@ -1,35 +1,40 @@
-import { AstPath, Doc, ParserOptions, doc } from "prettier";
-import { PluginOptions, PrintFn, TextToDoc } from "./types";
-import parser from "@babel/parser";
+import { AstPath, Doc, doc, Printer } from "prettier";
+import { AxmlOptions, PrintFn, TemplateTokens, TextToDoc } from "./types";
+import * as parser from "@babel/parser";
 import parseTemplate from "./parseTemplate";
 
-const { fill, line, group, indent, dedent, softline, hardline } = doc.builders;
-const { mapDoc, stripTrailingHardline } = doc.utils;
+const { fill, line, group, indent, softline, hardline } = doc.builders;
 
-function embed(
-  path: AstPath,
-  print: PrintFn,
-  textToDoc: TextToDoc,
-  options: PluginOptions
-): Doc | null {
+const embed: Printer<any>["embed"] = (
+  path,
+  print,
+  textToDoc,
+  options
+): Doc | null => {
   const node = path.getValue();
   if (!node || !node.type) return null;
   switch (node.type) {
     case "text":
       const text = node.data;
-      return parseAndPrintJSExpression(textToDoc, print, options)(text);
+      return parseAndPrintJSExpression(
+        textToDoc,
+        print,
+        options as AxmlOptions
+      )(text);
     case "tag":
-      return printTags(textToDoc, print, options)(path);
+      return printTags(textToDoc, print, options as AxmlOptions)(path);
     default:
       return null;
   }
-}
+};
 
-function printTags(textToDoc: any, print: any, options: PluginOptions) {
+// 处理标签
+function printTags(textToDoc: any, print: any, options: AxmlOptions) {
   return (path: AstPath) => {
     const node = path.getValue();
     const hasParent = !!node.parent;
     const hasChildren = node.children.length > 0;
+    // 处理后代
     const children: Doc[] = [];
     path.each((childPath) => {
       const child = childPath.getValue();
@@ -41,21 +46,25 @@ function printTags(textToDoc: any, print: any, options: PluginOptions) {
       }
       children.push(childPath.call(print));
     }, "children");
+    // 处理属性
     const attributeKeys = Object.keys(node.attribs);
-    const attributeTexts = attributeKeys.map((key) => {
-      const value = node.attribs[key];
-      const parts: any = [line, key];
-      const forceNakedJSObject =
-        (node.name === "template" && key === "data") ||
-        (key === "style" &&
+    const attributeTexts = attributeKeys.map((attributeKey) => {
+      const value = node.attribs[attributeKey];
+      const parts: any = [line, attributeKey];
+      // 也许是裸js对象
+      const canbeNakedJSObject =
+        (node.name === "template" && attributeKey === "data") ||
+        (attributeKey === "style" &&
           typeof value === "string" &&
           value.trim().startsWith("{{"));
+
       if (value !== true) {
         parts.push(
           '="',
+          // JS 表达式
           parseAndPrintJSExpression(textToDoc, print, options)(
             value,
-            forceNakedJSObject,
+            canbeNakedJSObject,
             true
           ),
           '"'
@@ -82,76 +91,93 @@ function printTags(textToDoc: any, print: any, options: PluginOptions) {
     ]);
   };
 }
+
+// 解析并打印 JS 表达式
 function parseAndPrintJSExpression(
   textToDoc: TextToDoc,
   _print: PrintFn,
-  options: PluginOptions
+  options: AxmlOptions
 ) {
-  return (text: any, forceNakedJSObject = false, isAttribute = false) => {
-    let spans = [["text", text, 0, text.length]];
+  return (text: string, isForceNakedJSObject = false, isAttribute = false) => {
+    let tokens: TemplateTokens = [["text", text, 0, text.length]];
+    // 提取模板字符串
     try {
-      spans = parseTemplate(text);
+      tokens = parseTemplate(text);
     } catch {}
-    const len = spans.length;
-    if (!len || (len === 1 && !spans[0][1].trim())) {
+    // 去除空白和无效模板
+    const tokensLen = tokens.length;
+    if (!tokensLen || (tokensLen === 1 && !tokens[0][1].replace(" ", ""))) {
       return [""];
     }
+
+    // 组装
     return group(
-      spans.map((span, index) => {
-        const [type, data] = span.slice(0, 2);
+      tokens.map((token, index) => {
+        const [type, data] = token;
         let str = data;
-        // string literal
+
+        // 普通字符串
         if (type === "text") {
-          // Keep whitespaces the same in attributes' TEXT
-          if (isAttribute) return str;
-          const parts = [];
-          // Remove Element's first text child's leading whitespaces.
+          // 保持属性文本中的空格相同
+          if (isAttribute) return str.replace(/(\s)+/g, " ");
+
+          // 删除 Element 的第一个文本子项的前导空格。
           // `<view>  abcd</view>` -> `<view>abcd</view>`
           if (index === 0) {
-            str = str.trimStart();
+            str = str.replace(/^( )+/g, "");
+            // str = str.trimStart();
           }
-          // Remove Element's last text child's trailing whitespaces.
+          // 删除 Element 的最后一个文本子项的尾随空格。
           // `<view>abcd   </view>` -> `<view>abcd</view>`
           // `<view>abcd\n   </view>` -> `<view>abcd</view>`
           // `<view>   \n \n  </view>` -> `<view></view>`
-          if (index === len - 1) {
-            str = str.trimEnd();
+          if (index === tokensLen - 1) {
+            str = str.replace(/( )+$/g, "");
+            // str = str.trimEnd();
           }
-          // Make sure to squash linebreaks and whitespaces
-          str = str.replace(/[\s]+/g, " ");
-          parts.push(
-            str.split(/(\n)/g).map((value: string) => {
-              if (value === "\n") return line;
-              return fill(
-                value
-                  .split(/( )/g)
-                  .map((segment: any, index: number) =>
-                    index % 2 === 0 ? segment : line
-                  )
-              );
-            })
-          );
+
+          // 多个换行符保留一个
+          if (
+            str.trim() === "" &&
+            str.split("").filter((char) => char === "\n").length > 2
+          ) {
+            return hardline;
+          }
+
+          // 组装
+          const parts = [
+            str
+              .split(/(\n)/g)
+              .filter((segment) => segment !== "")
+              .map((segment: string) => {
+                if (segment === "\n") return line;
+                return fill(
+                  segment.split(/( )/g).map((segment: string) => {
+                    return /\s/.test(segment) ? line : segment;
+                  })
+                );
+              })
+          ];
+
           return group(parts);
         }
-        // JS expression(or "naked" object expression)
+        // JS 表达式（或“裸”对象表达式）
         else if (type === "expression") {
-          // Only do isNakedJSObject check for attributes, as a performance improvement
-          let forceNaked = forceNakedJSObject;
-          if (isAttribute) {
-            forceNaked = forceNaked || isNakedJSObject(str);
-          }
-          const spacing = forceNaked
-            ? ""
-            : options.axmlBracketSpacing
-            ? line
-            : softline;
+          // isNakedJSObject 检查属性，作为性能提升
+          const forceNaked =
+            isForceNakedJSObject && isAttribute && isNakedJSObject(str);
+
+          // 换行\间距
+          const spacing = options.axmlBracketSpacing ? line : softline;
+
+          // 组装 Doc
           return [
             "{{",
             indent([
               spacing,
               forceNaked
-                ? printNakedJSObject(str, textToDoc, options)
-                : printJSExpression(str, textToDoc, options)
+                ? printNakedJSObject(str.trim(), textToDoc, options)
+                : printJSExpression(str.trim(), textToDoc, options)
             ]),
             spacing,
             "}}"
@@ -163,165 +189,70 @@ function parseAndPrintJSExpression(
     );
   };
 }
-function printJSExpression(text: any, textToDoc: TextToDoc, options: any) {
+
+// js 表达式到 Doc
+function printJSExpression(text: any, textToDoc: TextToDoc, options: any): Doc {
   if (!text) return text;
   let doc = text;
   let comments: any = "";
   let expr;
+
   try {
     expr = parser.parseExpression(text);
-  } catch {}
-  if (!expr) return doc;
+  } catch (error) {}
+  if (!expr) return [doc];
   if (expr.type === "StringLiteral") {
+    if (options.axmlBracketSpacing) {
+      return ` ${text.trim()} `;
+    }
     return text.trim();
   }
   if (expr.leadingComments) {
     const leadingCommentsEnd =
       expr.leadingComments[expr.leadingComments.length - 1].end;
-    // make coments a little prettier too
+    // 也让评论更漂亮一点
     comments = text
       .slice(0, leadingCommentsEnd)
       .trim()
       .split("\n")
       .map((s: string) => [s.trim(), hardline]);
-    // remove leading comments, make it easier to remove prefix semi
+    // 删除前导注释，使删除前缀 semi 更容易
     text = text.slice(leadingCommentsEnd + 1).trimStart();
   }
+
   doc = textToDoc(text, {
-    parser: "babel",
+    parser: "__js_expression",
     semi: false,
-    singleQuote: true,
     trailingComma: "none",
     bracketSpacing: options.axmlBracketSpacing
   });
-  // remove ASI-ed prefix semi
-  doc = removePrefixSemi(doc);
+
   // remove redundant Doc
-  doc = normalizeDoc(stripTrailingHardline(doc));
-  // concat coments and the rest
+  // doc = cleanDoc(stripTrailingHardline(doc));
+
   if (comments) {
     doc = [comments, doc];
   }
   return doc;
 }
-// Texts that are NOT valid JS expressions.
-//   - <template> tags's attribute `data` is an JS object whose wrapping `{}` are omitted.
-//     - <template data="{{a: 'a', b: 'b'}}"></template>
-//   - some builtin components' attribute `style` is an JS object whose wrapping `{}` are omitted.
-//     - <view style="{{backgroundColor: 'red'}}" />
-//   - custom components' whatever props
-//     - <my-component someData="{{...data, a: 'a'}}" />
+
+// 裸 js 对象到 Doc
 function printNakedJSObject(text: string, textToDoc: any, options: any) {
   if (!text) return text;
-  let doc = printJSExpression("({" + text + "})", textToDoc, options);
-  doc = removeObjectParens(doc, "(", ")");
-  doc = removeObjectParens(doc, "{", "}");
-  return dedent(doc);
+
+  const doc = printJSExpression(`{${text}}`, textToDoc, options);
+
+  return doc;
 }
-// Basically everything inside `{{}}` could be "naked" JS objects...
+
+// 基本上`{{}}`内的所有东西都可以是“裸”的JS对象..
+// 判断 裸 js 对象
 function isNakedJSObject(text: string) {
   let node;
   try {
-    node = parser.parseExpression("({" + text + "})");
+    node = parser.parseExpression(`({${text}})`);
   } catch {}
   return node ? node.type === "ObjectExpression" : false;
-}
-function removeObjectParens(doc: any, open: any, end: any): Doc {
-  if (
-    typeof doc !== "string" &&
-    doc.type === "concat" &&
-    doc.parts.length !== 0
-  ) {
-    const { parts } = doc;
-    const firstPart = parts[0];
-    const lastPart = parts[parts.length - 1];
-    if (parts.length === 1) {
-      return removeObjectParens(firstPart, open, end);
-    }
-    if (firstPart === open && lastPart === end) {
-      return {
-        type: "concat",
-        parts: parts.slice(1, -1)
-      };
-    }
-    return {
-      type: "concat",
-      parts: [
-        removeObjectParens(firstPart, open, end),
-        ...parts.slice(1, -1),
-        removeObjectParens(lastPart, open, end)
-      ]
-    };
-  } else if (typeof doc !== "string" && doc.type === "group") {
-    return removeObjectParens(doc.contents, open, end);
-  } else {
-    return doc;
-  }
-}
-// Remove prefix semi(via ASI) for formated JS expression
-function removePrefixSemi(doc: any): Doc {
-  if (
-    typeof doc !== "string" &&
-    doc.type === "concat" &&
-    doc.parts.length !== 0
-  ) {
-    const { parts } = doc;
-    const firstPart = parts[0];
-    if (firstPart === ";") {
-      return {
-        type: "concat",
-        parts: doc.parts.slice(1)
-      };
-    }
-    return {
-      type: "concat",
-      parts: [removePrefixSemi(firstPart), ...doc.parts.slice(1)]
-    };
-  }
-  return doc;
-}
-// from prettier 2.1.0-dev
-function normalizeParts(parts: any[]) {
-  const newParts = [];
-  const restParts = parts.filter(Boolean);
-  while (restParts.length !== 0) {
-    const part = restParts.shift();
-    if (!part) {
-      continue;
-    }
-    if (typeof part !== "string" && part.type === "concat") {
-      restParts.unshift(...part.parts);
-      continue;
-    }
-    if (
-      newParts.length !== 0 &&
-      typeof newParts[newParts.length - 1] === "string" &&
-      typeof part === "string"
-    ) {
-      newParts[newParts.length - 1] += part;
-      continue;
-    }
-    newParts.push(part);
-  }
-  return newParts;
-}
-// from prettier 2.1.0-dev
-function normalizeDoc(doc: any) {
-  return mapDoc(doc, (currentDoc: any) => {
-    if (
-      typeof currentDoc === "string" ||
-      !["concat", "fill"].includes(currentDoc.type)
-    ) {
-      return currentDoc;
-    }
-    if (!currentDoc.parts) {
-      return currentDoc;
-    }
-    return {
-      ...currentDoc,
-      parts: normalizeParts(currentDoc.parts)
-    };
-  });
 }
 
 export default embed;

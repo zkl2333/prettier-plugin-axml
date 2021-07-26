@@ -1,6 +1,5 @@
 import { Options, AstPath, Doc, ParserOptions } from "prettier";
-
-export interface PluginOptions extends ParserOptions {
+export interface AxmlOptions extends ParserOptions<any> {
   axmlBracketSameLine: boolean;
   axmlBracketSpacing: boolean;
 }

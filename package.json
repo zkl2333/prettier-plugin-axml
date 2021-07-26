@@ -5,7 +5,8 @@
   "main": "dist/plugin.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "print": "prettier --plugin=. ./test/source.axml > ./test/result.axml"
+    "test": "prettier --plugin=. ./test/source.axml > ./test/result.axml",
+    "debug": "node --inspect-brk ./debug.js"
   },
   "repository": {
     "type": "git",
@@ -33,6 +34,7 @@
     "plugins": [
       "."
     ],
-    "trailingComma": "none"
+    "trailingComma": "none",
+    "axmlBracketSpacing": true
   }
 }

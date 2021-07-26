@@ -1,28 +1,36 @@
-<view class="page-todos">
-  <view class="user">
-    <image class="avatar" src="{{user.avatar  }}" background-size="cover" />
-    <view class="nickname">
-      {{user.nickName && user.nickName + "'s" || 'My'}} Todo List
+<view id="defense-blackWhiteList">
+  <view
+    class="pa-normal fx--between-center bg-white mb-normal"
+    a:if="{{ act == "evaluate" }}"
+  >
+    <view class="fd--c">
+      <text class="fs-normal c-big">自动添加评价 黑名单</text>
+      <text class="fs-little c-big mt-little">
+        买家给店 铺中差评 将自动 添加到评价家给店
+                     铺中差评 将自动 添加到评价家给店 铺中差评 将自动
+        添加到评价家给店 铺中差评 将自动 添加到评价家给店
+                     铺中差评 将自动 添加到评价家给店 铺中差评 将自动
+                     添加到评价家给店 铺中差评 将自动 添加到评价家给店 铺中差评
+                     将自动 添加到评价家给店 铺中差评 将自动 添加到评价家给店
+        铺中差评
+                     将自动 添加到评价黑名单 {{
+          asdasd
+        }}
+      </text>
     </view>
+
+    <switch checked="{{ blackListSet }}" onChange="switchChange" />
   </view>
-  <view class="todo-items">
-    <checkbox-group class="todo-items-group" onChange="onTodoChanged">
-      <label
-        for="{{todos}}"
-        for-item="item"
-        class="todo-item {{item.completed  }}"
-        key="*this"
-      >
-        <checkbox
-          class="todo-item-checkbox"
-          value="{{item.text}}"
-          checked="{{item.completed}}"
-        />
-        <text class="todo-item-text">{{item.text}}</text>
-      </label>
-    </checkbox-group>
+
+  <p-v-add-input ref="saveRef" system="{{ system }}" act="{{ act }}" />
+  <view class="mt-normal {{ showFooter ? "mb-btn" : "" }}">
+    <p-v-list-item ref="saveRef" system="{{ system }}" act="{{ act }}" />
   </view>
-  <view class="todo-footer">
-    <add-button text="Add Todo" onClickMe="addTodo" />
-  </view>
+
+  <p-v-footer-btn
+    ref="saveRef"
+    system="{{ system }}"
+    a:if="{{ showFooter }}"
+    all="{{ choseAll }}"
+  />
 </view>

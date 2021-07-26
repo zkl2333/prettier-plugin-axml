@@ -5,6 +5,7 @@
  */
 import { TemplateTokens } from "./types";
 
+// TODO: 多层{{{}}}有问题
 const openingTagRe = /\{\{/;
 const closingTagRe = /\}\}/;
 // Credit: https://github.com/janl/mustache.js/blob/master/mustache.js
@@ -35,7 +36,7 @@ function parseTemplate(template: string): TemplateTokens {
 
 // Credit: https://github.com/janl/mustache.js/blob/master/mustache.js
 class Scanner {
-  pos: any;
+  pos: number;
   string: string;
   tail: string;
   constructor(str: string) {

@@ -1,5 +1,7 @@
-import { AstPath, ParserOptions, Doc } from "prettier";
+import { AstPath, ParserOptions, Doc, doc } from "prettier";
 import { PrintFn } from "./types";
+
+const { hardline } = doc.builders;
 
 function print(path: AstPath, _options: ParserOptions, _print: PrintFn) {
   const node = path.getValue();
@@ -9,6 +11,7 @@ function print(path: AstPath, _options: ParserOptions, _print: PrintFn) {
     path.each((childPath) => {
       children.push(childPath.call(_print));
     }, "children");
+    children.push(hardline);
     return children;
   }
   if (Array.isArray(node)) {
